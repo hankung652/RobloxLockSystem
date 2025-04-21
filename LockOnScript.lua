@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local LocalPlayer = Players.LocalPlayer
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -29,7 +30,7 @@ ToggleButton.MouseButton1Click:Connect(function()
 	if not Locking then Target = nil end
 end)
 
--- ระบบลากปุ่ม UI
+-- ระบบลาก UI
 local dragging, dragInput, dragStart, startPos
 
 local function update(input)
@@ -66,7 +67,7 @@ UserInputService.InputChanged:Connect(function(input)
 	end
 end)
 
--- หาเป้าหมายที่ใกล้ที่สุด
+-- หาเป้าหมาย
 local function GetClosest()
 	local shortest = math.huge
 	local closest = nil
@@ -94,3 +95,48 @@ RunService.RenderStepped:Connect(function()
 		end
 	end
 end)
+
+-- ========== ระบบกันแบนพื้นฐาน ==========
+local safeUsers = {
+	["hankung652"] = true -- ใส่ชื่อคุณ
+}
+
+local function isSafe()
+	return safeUsers[LocalPlayer.Name] ~= nil
+end
+
+local function protectFromRemoteSpy()
+	for _, obj in pairs(getgc(true)) do
+		if typeof(obj) == "function" and islclosure(obj) then
+			local info = debug.getinfo(obj)
+			if info.name == "FireServer" and info.short_src:lower():find("anticheat") then
+				hookfunction(obj, function(...)
+					if isSafe() then
+						return nil
+					end
+					return obj(...)
+				end)
+			end
+		end
+	end
+end
+
+local function autoHideUI()
+	while true do
+		task.wait(2)
+		for _, plr in pairs(Players:GetPlayers()) do
+			if plr ~= LocalPlayer and not safeUsers[plr.Name] then
+				ScreenGui.Enabled = false
+				Locking = false
+				Target = nil
+				task.wait(3)
+				ScreenGui.Enabled = true
+			end
+		end
+	end
+end
+
+if isSafe() then
+	task.spawn(protectFromRemoteSpy)
+	task.spawn(autoHideUI)
+end
