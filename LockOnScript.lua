@@ -1,11 +1,18 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local Locking = false
 local Target = nil
+
+-- รายชื่อผู้ใช้ที่ปลอดภัย
+local safeUsers = {
+    ["hankung652"] = true,
+    [LocalPlayer.Name] = true -- เพิ่มตัวเองอัตโนมัติ
+}
 
 -- ฟังก์ชันสร้าง UI
 local function createUI()
@@ -14,7 +21,7 @@ local function createUI()
     ScreenGui.ResetOnSpawn = false
     ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
-    local ToggleButton = Instance.new("TextButton", ScreenGui)
+    local ToggleButton = Instance.new("TextButton")
     ToggleButton.Size = UDim2.new(0, 120, 0, 50)
     ToggleButton.Position = UDim2.new(0, 20, 1, -70)
     ToggleButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
@@ -22,6 +29,7 @@ local function createUI()
     ToggleButton.Font = Enum.Font.SourceSansBold
     ToggleButton.TextSize = 20
     ToggleButton.Text = "Lock: OFF"
+    ToggleButton.Parent = ScreenGui
 
     ToggleButton.MouseButton1Click:Connect(function()
         Locking = not Locking
@@ -29,8 +37,9 @@ local function createUI()
         if not Locking then Target = nil end
     end)
 
-    -- Drag UI (แบบลื่น)
-    local dragging, dragStart, startPos
+    -- ระบบลาก UI แบบไม่ไวเกินไป
+    local dragging = false
+    local dragStart, startPos
 
     local function update(input)
         local delta = input.Position - dragStart
@@ -41,7 +50,7 @@ local function createUI()
     end
 
     ToggleButton.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true
             dragStart = input.Position
             startPos = ToggleButton.Position
@@ -49,19 +58,19 @@ local function createUI()
     end)
 
     ToggleButton.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = false
         end
     end)
 
     UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
             update(input)
         end
     end)
 end
 
--- หาเป้าหมายที่ใกล้ที่สุด
+-- หาเป้าหมายใกล้สุด
 local function GetClosest()
     local Root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not Root then return nil end
@@ -81,17 +90,7 @@ local function GetClosest()
     return closest
 end
 
--- สร้าง UI ครั้งแรก และทุกครั้งที่ตัวละครเกิดใหม่
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(1)
-    createUI()
-end)
-
-if LocalPlayer.Character then
-    createUI()
-end
-
--- กล้องตามเป้า
+-- ระบบล็อกกล้อง
 RunService.RenderStepped:Connect(function()
     if Locking then
         local Root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -106,9 +105,9 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- ========== ระบบกันแบนพื้นฐาน ==========
+-- ระบบกันแบน
 local function isSafe()
-    return true -- ผู้เล่นทุกคนถือว่าปลอดภัย
+    return safeUsers[LocalPlayer.Name]
 end
 
 local function protectFromRemoteSpy()
@@ -128,22 +127,33 @@ local function protectFromRemoteSpy()
 end
 
 local function autoHideUI()
+    local gui = LocalPlayer:WaitForChild("PlayerGui"):WaitForChild("LockOnUI")
     while true do
         task.wait(2)
         for _, plr in pairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer then
-                local gui = LocalPlayer:FindFirstChild("PlayerGui"):FindFirstChild("LockOnUI")
-                if gui then
-                    gui.Enabled = false
-                    Locking = false
-                    Target = nil
-                    task.wait(3)
-                    gui.Enabled = true
-                end
+            if plr ~= LocalPlayer and not safeUsers[plr.Name] then
+                gui.Enabled = false
+                Locking = false
+                Target = nil
+                task.wait(3)
+                gui.Enabled = true
             end
         end
     end
 end
 
-task.spawn(protectFromRemoteSpy)
-task.spawn(autoHideUI)
+-- สร้าง UI เมื่อเกิดใหม่
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    createUI()
+end)
+
+if LocalPlayer.Character then
+    createUI()
+end
+
+-- เรียกใช้ระบบกันแบน
+if isSafe() then
+    task.spawn(protectFromRemoteSpy)
+    task.spawn(autoHideUI)
+end
