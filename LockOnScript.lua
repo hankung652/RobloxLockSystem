@@ -1,9 +1,11 @@
+-- Services
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
+-- Variables
 local Locking = false
 local Target = nil
 
@@ -64,16 +66,22 @@ local function createUI()
     CircleStroke.Transparency = 0.3
     CircleStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-    CircleFrame.Visible = false -- ซ่อนก่อน
+    CircleFrame.Visible = false
 
+    -- Toggle Lock
     ToggleButton.MouseButton1Click:Connect(function()
         Locking = not Locking
         ToggleButton.Text = "Lock: " .. (Locking and "ON" or "OFF")
         CircleFrame.Visible = Locking
-        if not Locking then Target = nil end
+        if Locking then
+            -- ค้นหาเป้าครั้งแรก
+            Target = GetClosestForLock()
+        else
+            Target = nil
+        end
     end)
 
-    -- Drag UI (ปุ่ม Lock ลากได้)
+    -- Drag UI
     local dragging, dragStart, startPos
     local function update(input)
         local delta = input.Position - dragStart
@@ -103,7 +111,7 @@ local function createUI()
         end
     end)
 
-    -- เริ่มระบบกันแบน
+    -- เริ่มระบบ Anti-Ban
     if isSafe() then
         task.spawn(function() protectFromRemoteSpy() end)
         task.spawn(function()
@@ -111,7 +119,6 @@ local function createUI()
                 task.wait(2)
                 for _, plr in pairs(Players:GetPlayers()) do
                     if plr ~= LocalPlayer and not safeUserIds[plr.UserId] then
-                        -- แค่ล็อกระบบ ไม่ซ่อน UI นาน
                         Locking = false
                         Target = nil
                     end
@@ -121,8 +128,8 @@ local function createUI()
     end
 end
 
--- ========== Lock-on Logic ==========
-local function GetClosest()
+-- ========== Lock-On Logic ==========
+function GetClosestForLock()
     local Root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not Root then return nil end
 
@@ -131,10 +138,13 @@ local function GetClosest()
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
             local hrp = player.Character.HumanoidRootPart
-            local dist = (Root.Position - hrp.Position).Magnitude
-            if dist < shortest and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
-                shortest = dist
-                closest = hrp
+            local humanoid = player.Character:FindFirstChild("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                local dist = (Root.Position - hrp.Position).Magnitude
+                if dist < shortest then
+                    shortest = dist
+                    closest = hrp
+                end
             end
         end
     end
@@ -146,10 +156,14 @@ RunService.RenderStepped:Connect(function()
         local Root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         if not Root then return end
 
-        if not Target or not Target.Parent or Target.Parent:FindFirstChild("Humanoid").Health <= 0 then
-            Target = GetClosest()
+        -- ถ้าเป้าหมายตายหรือหายไป ปลดล็อก
+        if not Target or not Target.Parent or not Target.Parent:FindFirstChild("Humanoid") or Target.Parent.Humanoid.Health <= 0 then
+            Target = nil
+            Locking = false
         end
-        if Target then
+
+        -- ถ้ามีเป้าหมาย ให้หมุนกล้องตาม
+        if Target and Target.Parent and Target.Parent:FindFirstChild("Humanoid") and Target.Parent.Humanoid.Health > 0 then
             Camera.CFrame = CFrame.new(Camera.CFrame.Position, Target.Position)
         end
     end
