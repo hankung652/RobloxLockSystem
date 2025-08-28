@@ -1,95 +1,128 @@
--- LockOnScript.lua
-
--- กำหนดค่าพื้นฐาน
+-- Parent this LocalScript under StarterPlayerScripts
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
-local mouse = player:GetMouse()
+local character = player.Character or player.CharacterAdded:Wait()
 local camera = workspace.CurrentCamera
 
--- UI Elements
+-- Create ScreenGui
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "LockOnUI"
+screenGui.Name = "LockOnGUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- ปุ่ม Toggle
+-- Toggle Button
 local toggleButton = Instance.new("TextButton")
 toggleButton.Size = UDim2.new(0, 150, 0, 50)
-toggleButton.Position = UDim2.new(0.02, 0, 0.85, 0)
-toggleButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.Position = UDim2.new(0.05, 0, 0.85, 0)
+toggleButton.Text = "Lock-On: OFF"
 toggleButton.TextScaled = true
-toggleButton.Font = Enum.Font.GothamBold
-toggleButton.Text = "Lock-On"
+toggleButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleButton.Parent = screenGui
 
--- วงกลมตรงกลางจอ
-local lockCircle = Instance.new("ImageLabel")
-lockCircle.Size = UDim2.new(0, 100, 0, 100)
-lockCircle.Position = UDim2.new(0.5, -50, 0.5, -50)
-lockCircle.BackgroundTransparency = 1
-lockCircle.Image = "rbxassetid://3570695787"
-lockCircle.ImageColor3 = Color3.fromRGB(255, 255, 255)
-lockCircle.ImageTransparency = 0.2
-lockCircle.Visible = false
-lockCircle.Parent = screenGui
+-- Lock-On Circle
+local circle = Instance.new("Frame")
+circle.Size = UDim2.new(0, 120, 0, 120)
+circle.Position = UDim2.new(0.5, -60, 0.5, -60)
+circle.AnchorPoint = Vector2.new(0.5, 0.5)
+circle.BackgroundTransparency = 1
+circle.Visible = false
+circle.Parent = screenGui
 
--- ตัวแปรสถานะ
+local circleUI = Instance.new("UICorner")
+circleUI.CornerRadius = UDim.new(1, 0)
+circleUI.Parent = circle
+
+local stroke = Instance.new("UIStroke")
+stroke.Thickness = 3
+stroke.Color = Color3.fromRGB(255, 255, 255)
+stroke.Parent = circle
+
+-- Variables
 local lockOnEnabled = false
 local target = nil
+local lockRange = 100
+local maxCircleSize = 360
 
--- ฟังก์ชันหาเป้าหมายที่ใกล้สุด
-local function getClosestTarget()
-    local closest, distance = nil, math.huge
-    for _, v in pairs(Players:GetPlayers()) do
-        if v ~= player and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
-            local charPos = v.Character.HumanoidRootPart.Position
-            local mag = (charPos - player.Character.HumanoidRootPart.Position).Magnitude
-            if mag < distance and mag < 100 then
-                closest, distance = v.Character.HumanoidRootPart, mag
+-- Function to find closest enemy
+local function getClosestEnemy()
+    local closest = nil
+    local shortestDistance = lockRange
+    for _, v in pairs(workspace:GetChildren()) do
+        if v:IsA("Model") and v ~= character and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
+            if v.Humanoid.Health > 0 then
+                local pos = v.HumanoidRootPart.Position
+                local screenPos, onScreen = camera:WorldToViewportPoint(pos)
+                if onScreen then
+                    local distance = (camera.CFrame.Position - pos).Magnitude
+                    if distance < shortestDistance then
+                        shortestDistance = distance
+                        closest = v
+                    end
+                end
             end
         end
     end
     return closest
 end
 
--- ฟังก์ชันเปิด/ปิด Lock-On
-local function toggleLock()
-    lockOnEnabled = not lockOnEnabled
-    lockCircle.Visible = lockOnEnabled
+-- Update Lock-On
+RunService.RenderStepped:Connect(function()
+    if lockOnEnabled and target then
+        if target:FindFirstChild("Humanoid") and target.Humanoid.Health > 0 then
+            camera.CFrame = CFrame.new(camera.CFrame.Position, target.HumanoidRootPart.Position)
+            circle.Visible = true
+            -- Dynamic circle size based on distance
+            local distance = (camera.CFrame.Position - target.HumanoidRootPart.Position).Magnitude
+            local size = math.clamp(360 - (distance * 2), 80, maxCircleSize)
+            circle.Size = UDim2.new(0, size, 0, size)
+        else
+            -- Target dead or gone
+            target = nil
+            lockOnEnabled = false
+            toggleButton.Text = "Lock-On: OFF"
+            circle.Visible = false
+        end
+    else
+        circle.Visible = false
+    end
+end)
+
+-- Toggle Lock-On
+local function toggleLockOn()
     if not lockOnEnabled then
+        target = getClosestEnemy()
+        if target then
+            lockOnEnabled = true
+            toggleButton.Text = "Lock-On: ON"
+        else
+            toggleButton.Text = "No Target"
+            wait(1)
+            toggleButton.Text = "Lock-On: OFF"
+        end
+    else
+        lockOnEnabled = false
         target = nil
+        toggleButton.Text = "Lock-On: OFF"
     end
 end
 
--- Event สำหรับปุ่ม UI
-toggleButton.MouseButton1Click:Connect(toggleLock)
+toggleButton.MouseButton1Click:Connect(toggleLockOn)
 
--- Event สำหรับปุ่ม L
+-- Keybind for PC
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if not gameProcessed and input.KeyCode == Enum.KeyCode.L then
-        toggleLock()
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.Q then
+        toggleLockOn()
     end
 end)
 
--- อัปเดตการล็อกเป้าหมาย
-RunService.RenderStepped:Connect(function()
-    if lockOnEnabled then
-        if not target or (target.Position - player.Character.HumanoidRootPart.Position).Magnitude > 100 then
-            target = getClosestTarget()
-        end
-        if target then
-            camera.CFrame = CFrame.new(camera.CFrame.Position, target.Position)
-        end
-    end
-end)
-
--- ป้องกันสคริปต์ซ้อนเมื่อ Respawn
-player.CharacterAdded:Connect(function()
+-- Handle Respawn
+player.CharacterAdded:Connect(function(newChar)
+    character = newChar
     lockOnEnabled = false
     target = nil
-    lockCircle.Visible = false
+    toggleButton.Text = "Lock-On: OFF"
 end)
