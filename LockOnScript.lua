@@ -1,129 +1,114 @@
--- LocalScript (ใส่ใน StarterPlayerScripts)
-local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
-
-local player = Players.LocalPlayer
+--// CONFIG
+local LOCK_RANGE = 50 -- ระยะตรวจจับ
+local player = game.Players.LocalPlayer
 local mouse = player:GetMouse()
 local camera = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
 
--- สร้าง ScreenGui
+--// GUI
+local playerGui = player:WaitForChild("PlayerGui")
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "LockOnSystem"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = player:WaitForChild("PlayerGui")
+screenGui.Name = "LockOnUI"
+screenGui.Parent = playerGui
 
--- วงกลม Lock-On
-local circle = Instance.new("Frame")
-circle.Size = UDim2.new(0, 200, 0, 200)
-circle.Position = UDim2.new(0.5, -100, 0.5, -100)
-circle.AnchorPoint = Vector2.new(0.5, 0.5)
-circle.BackgroundTransparency = 1
-circle.Name = "LockCircle"
-circle.Parent = screenGui
+-- ปุ่มเปิดปิด
+local toggleButton = Instance.new("TextButton")
+toggleButton.Size = UDim2.new(0, 120, 0, 50)
+toggleButton.Position = UDim2.new(0.05, 0, 0.85, 0)
+toggleButton.Text = "Lock-On: OFF"
+toggleButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.Parent = screenGui
 
-local uiCorner = Instance.new("UICorner")
-uiCorner.CornerRadius = UDim.new(1, 0)
-uiCorner.Parent = circle
-
-local stroke = Instance.new("UIStroke")
-stroke.Color = Color3.fromRGB(255, 0, 0)
-stroke.Thickness = 3
-stroke.Parent = circle
-
--- ปุ่ม Toggle Lock-On
-local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(0, 100, 0, 50)
-toggleBtn.Position = UDim2.new(0.5, -50, 0.8, 0)
-toggleBtn.Text = "Lock-On"
-toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleBtn.Font = Enum.Font.SourceSansBold
-toggleBtn.TextSize = 24
-toggleBtn.Parent = screenGui
-
-local btnCorner = Instance.new("UICorner")
-btnCorner.CornerRadius = UDim.new(0.3, 0)
-btnCorner.Parent = toggleBtn
-
--- ระบบลากปุ่ม
+-- ทำให้ปุ่มลากได้
 local dragging = false
 local dragStart, startPos
-local function update(input)
-    local delta = input.Position - dragStart
-    toggleBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
-        startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-end
-
-toggleBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStart = input.Position
-        startPos = toggleBtn.Position
-    end
+toggleButton.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = input.Position
+		startPos = toggleButton.Position
+	end
+end)
+toggleButton.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
+		local delta = input.Position - dragStart
+		toggleButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	end
+end)
+UIS.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = false
+	end
 end)
 
-toggleBtn.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
-        if dragging then
-            update(input)
-        end
-    end
-end)
+-- วงกลมตรงกลาง
+local lockCircle = Instance.new("Frame")
+lockCircle.Size = UDim2.new(0, 250, 0, 250)
+lockCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+lockCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
+lockCircle.BackgroundTransparency = 1
+lockCircle.BorderSizePixel = 0
+lockCircle.Visible = false
+lockCircle.Parent = screenGui
 
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
-    end
-end)
+local circleUI = Instance.new("UICorner")
+circleUI.CornerRadius = UDim.new(1, 0)
+circleUI.Parent = lockCircle
 
--- ตัวแปร Lock-On
+local circleOutline = Instance.new("ImageLabel")
+circleOutline.Size = UDim2.new(1, 0, 1, 0)
+circleOutline.AnchorPoint = Vector2.new(0.5, 0.5)
+circleOutline.Position = UDim2.new(0.5, 0, 0.5, 0)
+circleOutline.BackgroundTransparency = 1
+circleOutline.Image = "rbxassetid://4632082392" -- วงกลมโปร่ง
+circleOutline.ImageColor3 = Color3.fromRGB(0, 170, 255)
+circleOutline.Parent = lockCircle
+
+-- ตัวแปรหลัก
+local lockOnEnabled = false
 local lockedTarget = nil
-local lockActive = false
 
--- ปุ่มกดสลับ Lock-On
-toggleBtn.MouseButton1Click:Connect(function()
-    lockActive = not lockActive
-    toggleBtn.Text = lockActive and "Lock: ON" or "Lock: OFF"
-    if not lockActive then
-        lockedTarget = nil
-    end
+-- ปุ่ม Toggle
+toggleButton.MouseButton1Click:Connect(function()
+	lockOnEnabled = not lockOnEnabled
+	toggleButton.Text = "Lock-On: " .. (lockOnEnabled and "ON" or "OFF")
+	lockCircle.Visible = lockOnEnabled
+
+	if not lockOnEnabled then
+		lockedTarget = nil
+	end
 end)
 
--- ฟังก์ชันหาศัตรูใกล้สุดในวงกลม
+-- หาเป้าหมาย
 local function getClosestEnemy()
-    local closestEnemy, minDist = nil, math.huge
-    for _, enemy in ipairs(Players:GetPlayers()) do
-        if enemy ~= player and enemy.Character and enemy.Character:FindFirstChild("HumanoidRootPart") then
-            local root = enemy.Character.HumanoidRootPart
-            local pos, onScreen = camera:WorldToViewportPoint(root.Position)
-            if onScreen then
-                local screenPos = Vector2.new(pos.X, pos.Y)
-                local centerPos = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-                local distance = (screenPos - centerPos).Magnitude
-                if distance <= 100 and distance < minDist then
-                    closestEnemy = enemy
-                    minDist = distance
-                end
-            end
-        end
-    end
-    return closestEnemy
+	local closest, closestDist = nil, LOCK_RANGE
+	for _, v in pairs(workspace:GetDescendants()) do
+		if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") and v ~= player.Character then
+			local hrp = v.HumanoidRootPart
+			local screenPos, onScreen = camera:WorldToViewportPoint(hrp.Position)
+			if onScreen then
+				local center = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
+				local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+				if dist < (lockCircle.AbsoluteSize.X/2) and dist < closestDist then
+					closestDist = dist
+					closest = v
+				end
+			end
+		end
+	end
+	return closest
 end
 
--- อัพเดตทุกเฟรม
+-- อัปเดตทุกเฟรม
 RunService.RenderStepped:Connect(function()
-    if lockActive then
-        if not lockedTarget or not lockedTarget.Character or not lockedTarget.Character:FindFirstChild("Humanoid") or lockedTarget.Character.Humanoid.Health <= 0 then
-            lockedTarget = getClosestEnemy()
-        end
-
-        if lockedTarget and lockedTarget.Character and lockedTarget.Character:FindFirstChild("HumanoidRootPart") then
-            camera.CFrame = CFrame.new(camera.CFrame.Position, lockedTarget.Character.HumanoidRootPart.Position)
-        end
-    end
+	if lockOnEnabled then
+		if not lockedTarget or lockedTarget:FindFirstChild("Humanoid").Health <= 0 then
+			lockedTarget = getClosestEnemy()
+		end
+		if lockedTarget then
+			camera.CFrame = CFrame.new(camera.CFrame.Position, lockedTarget.HumanoidRootPart.Position)
+		end
+	end
 end)
-
--- ระบบกันแบน (ป้องกัน Kick เบื้องต้น)
-hookfunction(game:GetService("Players").LocalPlayer.Kick, function() return end)
