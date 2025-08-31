@@ -1,98 +1,55 @@
---// CONFIG
-local LOCK_RANGE = 50 -- ระยะตรวจจับ
+-- // ตัวแปรหลัก
 local player = game.Players.LocalPlayer
 local mouse = player:GetMouse()
 local camera = workspace.CurrentCamera
-local RunService = game:GetService("RunService")
-local UIS = game:GetService("UserInputService")
 
---// GUI
-local playerGui = player:WaitForChild("PlayerGui")
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "LockOnUI"
-screenGui.Parent = playerGui
+-- // UI Elements
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "LockOnGui"
+ScreenGui.Parent = player:WaitForChild("PlayerGui")
 
--- ปุ่มเปิดปิด
-local toggleButton = Instance.new("TextButton")
-toggleButton.Size = UDim2.new(0, 120, 0, 50)
-toggleButton.Position = UDim2.new(0.05, 0, 0.85, 0)
-toggleButton.Text = "Lock-On: OFF"
-toggleButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleButton.Parent = screenGui
+-- ปุ่มเปิด/ปิด Lock-On
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Size = UDim2.new(0, 150, 0, 50)
+ToggleButton.Position = UDim2.new(0, 20, 1, -70)
+ToggleButton.Text = "Lock-On: OFF"
+ToggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+ToggleButton.TextColor3 = Color3.new(1, 1, 1)
+ToggleButton.Parent = ScreenGui
 
--- ทำให้ปุ่มลากได้
-local dragging = false
-local dragStart, startPos
-toggleButton.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		dragging = true
-		dragStart = input.Position
-		startPos = toggleButton.Position
-	end
-end)
-toggleButton.InputChanged:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
-		local delta = input.Position - dragStart
-		toggleButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-	end
-end)
-UIS.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		dragging = false
-	end
-end)
+-- วงกลม Lock-On (อยู่กลางจอ)
+local LockCircle = Instance.new("Frame")
+LockCircle.Size = UDim2.new(0, 200, 0, 200)
+LockCircle.Position = UDim2.new(0.5, -100, 0.5, -100)
+LockCircle.AnchorPoint = Vector2.new(0, 0)
+LockCircle.BackgroundTransparency = 1
+LockCircle.Visible = false
+LockCircle.Parent = ScreenGui
 
--- วงกลมตรงกลาง
-local lockCircle = Instance.new("Frame")
-lockCircle.Size = UDim2.new(0, 250, 0, 250)
-lockCircle.AnchorPoint = Vector2.new(0.5, 0.5)
-lockCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
-lockCircle.BackgroundTransparency = 1
-lockCircle.BorderSizePixel = 0
-lockCircle.Visible = false
-lockCircle.Parent = screenGui
+local CircleImage = Instance.new("ImageLabel")
+CircleImage.Size = UDim2.new(1, 0, 1, 0)
+CircleImage.Image = "rbxassetid://3926305904" -- วงกลมโปร่ง
+CircleImage.ImageColor3 = Color3.fromRGB(0, 170, 255)
+CircleImage.BackgroundTransparency = 1
+CircleImage.ImageTransparency = 0.3
+CircleImage.Parent = LockCircle
 
-local circleUI = Instance.new("UICorner")
-circleUI.CornerRadius = UDim.new(1, 0)
-circleUI.Parent = lockCircle
+-- // ตัวแปรสถานะ
+local LockOnEnabled = false
+local LockedTarget = nil
+local LockRange = 100 -- ระยะล็อกเป้า
 
-local circleOutline = Instance.new("ImageLabel")
-circleOutline.Size = UDim2.new(1, 0, 1, 0)
-circleOutline.AnchorPoint = Vector2.new(0.5, 0.5)
-circleOutline.Position = UDim2.new(0.5, 0, 0.5, 0)
-circleOutline.BackgroundTransparency = 1
-circleOutline.Image = "rbxassetid://4632082392" -- วงกลมโปร่ง
-circleOutline.ImageColor3 = Color3.fromRGB(0, 170, 255)
-circleOutline.Parent = lockCircle
-
--- ตัวแปรหลัก
-local lockOnEnabled = false
-local lockedTarget = nil
-
--- ปุ่ม Toggle
-toggleButton.MouseButton1Click:Connect(function()
-	lockOnEnabled = not lockOnEnabled
-	toggleButton.Text = "Lock-On: " .. (lockOnEnabled and "ON" or "OFF")
-	lockCircle.Visible = lockOnEnabled
-
-	if not lockOnEnabled then
-		lockedTarget = nil
-	end
-end)
-
--- หาเป้าหมาย
-local function getClosestEnemy()
-	local closest, closestDist = nil, LOCK_RANGE
-	for _, v in pairs(workspace:GetDescendants()) do
-		if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") and v ~= player.Character then
-			local hrp = v.HumanoidRootPart
-			local screenPos, onScreen = camera:WorldToViewportPoint(hrp.Position)
-			if onScreen then
-				local center = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
-				local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
-				if dist < (lockCircle.AbsoluteSize.X/2) and dist < closestDist then
-					closestDist = dist
+-- // ฟังก์ชันค้นหาเป้าหมายใกล้สุด
+local function GetClosestTarget()
+	local closest = nil
+	local shortestDist = math.huge
+	for _, v in ipairs(workspace:GetDescendants()) do
+		if v:IsA("Model") and v:FindFirstChild("Humanoid") and v ~= player.Character then
+			local hrp = v:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				local dist = (hrp.Position - player.Character.HumanoidRootPart.Position).Magnitude
+				if dist < shortestDist and dist <= LockRange then
+					shortestDist = dist
 					closest = v
 				end
 			end
@@ -101,14 +58,24 @@ local function getClosestEnemy()
 	return closest
 end
 
--- อัปเดตทุกเฟรม
-RunService.RenderStepped:Connect(function()
-	if lockOnEnabled then
-		if not lockedTarget or lockedTarget:FindFirstChild("Humanoid").Health <= 0 then
-			lockedTarget = getClosestEnemy()
+-- // ปุ่ม Toggle Lock-On
+ToggleButton.MouseButton1Click:Connect(function()
+	LockOnEnabled = not LockOnEnabled
+	ToggleButton.Text = LockOnEnabled and "Lock-On: ON" or "Lock-On: OFF"
+	LockCircle.Visible = LockOnEnabled
+	if not LockOnEnabled then
+		LockedTarget = nil
+	end
+end)
+
+-- // อัพเดทกล้องตอน Lock-On
+game:GetService("RunService").RenderStepped:Connect(function()
+	if LockOnEnabled then
+		if not LockedTarget or not LockedTarget:FindFirstChild("Humanoid") or LockedTarget.Humanoid.Health <= 0 then
+			LockedTarget = GetClosestTarget()
 		end
-		if lockedTarget then
-			camera.CFrame = CFrame.new(camera.CFrame.Position, lockedTarget.HumanoidRootPart.Position)
+		if LockedTarget then
+			camera.CFrame = CFrame.new(camera.CFrame.Position, LockedTarget.HumanoidRootPart.Position)
 		end
 	end
 end)
