@@ -14,12 +14,13 @@ screenGui.Name = "LockOnSystem"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- วงกลม Lock-On (แก้ให้กลางหน้าจอ)
+-- วงกลม Lock-On (แก้ให้กลางหน้าจอ และควบคุมการแสดงผล)
 local circle = Instance.new("Frame")
 circle.Size = UDim2.new(0, 200, 0, 200)
-circle.Position = UDim2.fromScale(0.5, 0.5) -- อยู่กลางหน้าจอเสมอ
+circle.Position = UDim2.fromScale(0.5, 0.5)
 circle.AnchorPoint = Vector2.new(0.5, 0.5)
 circle.BackgroundTransparency = 1
+circle.Visible = false -- เริ่มต้นซ่อน
 circle.Name = "LockCircle"
 circle.Parent = screenGui
 
@@ -86,6 +87,7 @@ local lockActive = false
 toggleBtn.MouseButton1Click:Connect(function()
     lockActive = not lockActive
     toggleBtn.Text = lockActive and "Lock: ON" or "Lock: OFF"
+    circle.Visible = lockActive -- แสดงวงกลมเมื่อเปิด, ซ่อนเมื่อปิด
     if not lockActive then
         lockedTarget = nil
     end
