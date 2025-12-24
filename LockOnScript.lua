@@ -1,4 +1,4 @@
--- LocalScript (StarterPlayerScripts)
+-- LocalScript (ใส่ใน StarterPlayerScripts)
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -6,22 +6,20 @@ local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
---=========================
--- GUI
---=========================
+-- ================= UI =================
+
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "LockOnSystem"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- วงกลม Lock-On (กลางจอ, ซ่อนตอนแรก)
+-- วงกลม Lock-On (กลางจอ / ไม่ลาก / โชว์เฉพาะตอนเปิด)
 local circle = Instance.new("Frame")
 circle.Size = UDim2.new(0, 200, 0, 200)
 circle.Position = UDim2.fromScale(0.5, 0.5)
 circle.AnchorPoint = Vector2.new(0.5, 0.5)
 circle.BackgroundTransparency = 1
 circle.Visible = false
-circle.Name = "LockCircle"
 circle.Parent = screenGui
 
 local uiCorner = Instance.new("UICorner")
@@ -33,120 +31,130 @@ stroke.Color = Color3.fromRGB(255, 0, 0)
 stroke.Thickness = 3
 stroke.Parent = circle
 
--- ปุ่ม Toggle Lock-On (ลากได้)
+-- ปุ่ม Toggle Lock
 local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(0, 100, 0, 50)
-toggleBtn.Position = UDim2.new(0.5, -50, 0.8, 0)
+toggleBtn.Size = UDim2.new(0, 120, 0, 50)
+toggleBtn.Position = UDim2.new(0.05, 0, 0.8, 0)
 toggleBtn.Text = "Lock: OFF"
 toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleBtn.Font = Enum.Font.SourceSansBold
-toggleBtn.TextSize = 24
+toggleBtn.TextSize = 22
 toggleBtn.Parent = screenGui
 
 local btnCorner = Instance.new("UICorner")
 btnCorner.CornerRadius = UDim.new(0.3, 0)
 btnCorner.Parent = toggleBtn
 
--- ระบบลากปุ่ม
+-- ลากปุ่ม (มือถือ)
 local dragging = false
 local dragStart, startPos
-local function update(input)
-    local delta = input.Position - dragStart
-    toggleBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
-        startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-end
 
 toggleBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStart = input.Position
-        startPos = toggleBtn.Position
-    end
+	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = input.Position
+		startPos = toggleBtn.Position
+	end
 end)
 
-toggleBtn.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
-        if dragging then
-            update(input)
-        end
-    end
+toggleBtn.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = false
+	end
 end)
 
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
-    end
+UserInputService.InputChanged:Connect(function(input)
+	if dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+		local delta = input.Position - dragStart
+		toggleBtn.Position = UDim2.new(
+			startPos.X.Scale, startPos.X.Offset + delta.X,
+			startPos.Y.Scale, startPos.Y.Offset + delta.Y
+		)
+	end
 end)
 
---=========================
--- Lock-On System
---=========================
-local lockedTarget = nil
+-- ================= Lock System =================
+
 local lockActive = false
+local lockedTarget = nil
 
 toggleBtn.MouseButton1Click:Connect(function()
-    lockActive = not lockActive
-    toggleBtn.Text = lockActive and "Lock: ON" or "Lock: OFF"
-    circle.Visible = lockActive
-    if not lockActive then
-        lockedTarget = nil
-        -- เปิด AutoRotate คืน
-        if player.Character and player.Character:FindFirstChild("Humanoid") then
-            player.Character.Humanoid.AutoRotate = true
-        end
-    end
+	lockActive = not lockActive
+	toggleBtn.Text = lockActive and "Lock: ON" or "Lock: OFF"
+	circle.Visible = lockActive
+
+	if not lockActive then
+		lockedTarget = nil
+	end
 end)
 
--- ฟังก์ชันหาศัตรูใกล้สุด (ในวงกลม)
+-- หาเป้าในวงกลมกลางจอ
 local function getClosestEnemy()
-    local closestEnemy, minDist = nil, math.huge
-    for _, enemy in ipairs(Players:GetPlayers()) do
-        if enemy ~= player and enemy.Character and enemy.Character:FindFirstChild("HumanoidRootPart") then
-            local root = enemy.Character.HumanoidRootPart
-            local pos, onScreen = camera:WorldToViewportPoint(root.Position)
-            if onScreen then
-                local screenPos = Vector2.new(pos.X, pos.Y)
-                local centerPos = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-                local distance = (screenPos - centerPos).Magnitude
-                if distance <= 100 and distance < minDist then
-                    closestEnemy = enemy
-                    minDist = distance
-                end
-            end
-        end
-    end
-    return closestEnemy
+	local closest, minDist = nil, math.huge
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= player and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+			local hum = plr.Character:FindFirstChild("Humanoid")
+			if hum and hum.Health > 0 then
+				local pos, onScreen = camera:WorldToViewportPoint(plr.Character.HumanoidRootPart.Position)
+				if onScreen then
+					local center = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
+					local dist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+					if dist <= 100 and dist < minDist then
+						minDist = dist
+						closest = plr
+					end
+				end
+			end
+		end
+	end
+	return closest
 end
 
--- อัพเดตทุกเฟรม
+-- ================= Render Loop =================
+-- 🔥 ตรงนี้คือ "จุดเดียว" ที่แก้บั๊กบางแมพไม่หัน
+
 RunService.RenderStepped:Connect(function()
-    if lockActive then
-        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
-        local humanoid = player.Character:FindFirstChild("Humanoid")
-        local root = player.Character.HumanoidRootPart
+	if lockActive then
+		if not lockedTarget
+		or not lockedTarget.Character
+		or not lockedTarget.Character:FindFirstChild("Humanoid")
+		or lockedTarget.Character.Humanoid.Health <= 0 then
+			lockedTarget = getClosestEnemy()
+		end
 
-        if not lockedTarget or not lockedTarget.Character or not lockedTarget.Character:FindFirstChild("Humanoid") or lockedTarget.Character.Humanoid.Health <= 0 then
-            lockedTarget = getClosestEnemy()
-        end
+		if lockedTarget and lockedTarget.Character and lockedTarget.Character:FindFirstChild("HumanoidRootPart") then
+			local targetRoot = lockedTarget.Character.HumanoidRootPart
+			local myChar = player.Character
+			local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+			local humanoid = myChar and myChar:FindFirstChild("Humanoid")
 
-        if lockedTarget and lockedTarget.Character and lockedTarget.Character:FindFirstChild("HumanoidRootPart") then
-            local targetRoot = lockedTarget.Character.HumanoidRootPart
+			-- กล้อง (เหมือนเดิม)
+			camera.CFrame = CFrame.new(camera.CFrame.Position, targetRoot.Position)
 
-            -- กล้องหันตามศัตรู
-            camera.CFrame = CFrame.new(camera.CFrame.Position, targetRoot.Position)
-
-            -- ตัวละครหันไปทางศัตรู
-            if humanoid then
-                humanoid.AutoRotate = false
-                local lookAt = Vector3.new(targetRoot.Position.X, root.Position.Y, targetRoot.Position.Z)
-                root.CFrame = CFrame.new(root.Position, lookAt)
-            end
-        end
-    end
+			-- 🔥 บังคับหมุนตัวละคร (แก้เฉพาะแมพที่ไม่หมุน)
+			if myRoot and humanoid then
+				humanoid.AutoRotate = false
+				myRoot.CFrame = CFrame.lookAt(
+					myRoot.Position,
+					Vector3.new(
+						targetRoot.Position.X,
+						myRoot.Position.Y,
+						targetRoot.Position.Z
+					)
+				)
+			end
+		end
+	else
+		-- คืนค่าเมื่อปิดล็อก
+		local humanoid = player.Character and player.Character:FindFirstChild("Humanoid")
+		if humanoid then
+			humanoid.AutoRotate = true
+		end
+	end
 end)
 
---=========================
--- Anti-Ban (กัน Kick เบื้องต้น)
---=========================
-hookfunction(game:GetService("Players").LocalPlayer.Kick, function() return end)
+-- กัน Kick เบื้องต้น (เหมือนเดิม)
+pcall(function()
+	hookfunction(player.Kick, function() return end)
+end)
