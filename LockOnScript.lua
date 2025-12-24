@@ -1,26 +1,26 @@
--- LocalScript (ใส่ใน StarterPlayerScripts)
+-- LocalScript (StarterPlayerScripts)
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
-local mouse = player:GetMouse()
 local camera = workspace.CurrentCamera
 
--- สร้าง ScreenGui
+--=========================
+-- GUI
+--=========================
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "LockOnSystem"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- วงกลม Lock-On (แก้ให้กลางหน้าจอ และควบคุมการแสดงผล)
+-- วงกลม Lock-On (กลางจอ, ซ่อนตอนแรก)
 local circle = Instance.new("Frame")
 circle.Size = UDim2.new(0, 200, 0, 200)
 circle.Position = UDim2.fromScale(0.5, 0.5)
 circle.AnchorPoint = Vector2.new(0.5, 0.5)
 circle.BackgroundTransparency = 1
-circle.Visible = false -- เริ่มต้นซ่อน
+circle.Visible = false
 circle.Name = "LockCircle"
 circle.Parent = screenGui
 
@@ -33,11 +33,11 @@ stroke.Color = Color3.fromRGB(255, 0, 0)
 stroke.Thickness = 3
 stroke.Parent = circle
 
--- ปุ่ม Toggle Lock-On
+-- ปุ่ม Toggle Lock-On (ลากได้)
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Size = UDim2.new(0, 100, 0, 50)
 toggleBtn.Position = UDim2.new(0.5, -50, 0.8, 0)
-toggleBtn.Text = "Lock-On"
+toggleBtn.Text = "Lock: OFF"
 toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleBtn.Font = Enum.Font.SourceSansBold
@@ -79,21 +79,26 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- ตัวแปร Lock-On
+--=========================
+-- Lock-On System
+--=========================
 local lockedTarget = nil
 local lockActive = false
 
--- ปุ่มกดสลับ Lock-On
 toggleBtn.MouseButton1Click:Connect(function()
     lockActive = not lockActive
     toggleBtn.Text = lockActive and "Lock: ON" or "Lock: OFF"
-    circle.Visible = lockActive -- แสดงวงกลมเมื่อเปิด, ซ่อนเมื่อปิด
+    circle.Visible = lockActive
     if not lockActive then
         lockedTarget = nil
+        -- เปิด AutoRotate คืน
+        if player.Character and player.Character:FindFirstChild("Humanoid") then
+            player.Character.Humanoid.AutoRotate = true
+        end
     end
 end)
 
--- ฟังก์ชันหาศัตรูใกล้สุดในวงกลม
+-- ฟังก์ชันหาศัตรูใกล้สุด (ในวงกลม)
 local function getClosestEnemy()
     local closestEnemy, minDist = nil, math.huge
     for _, enemy in ipairs(Players:GetPlayers()) do
@@ -117,15 +122,31 @@ end
 -- อัพเดตทุกเฟรม
 RunService.RenderStepped:Connect(function()
     if lockActive then
+        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
+        local humanoid = player.Character:FindFirstChild("Humanoid")
+        local root = player.Character.HumanoidRootPart
+
         if not lockedTarget or not lockedTarget.Character or not lockedTarget.Character:FindFirstChild("Humanoid") or lockedTarget.Character.Humanoid.Health <= 0 then
             lockedTarget = getClosestEnemy()
         end
 
         if lockedTarget and lockedTarget.Character and lockedTarget.Character:FindFirstChild("HumanoidRootPart") then
-            camera.CFrame = CFrame.new(camera.CFrame.Position, lockedTarget.Character.HumanoidRootPart.Position)
+            local targetRoot = lockedTarget.Character.HumanoidRootPart
+
+            -- กล้องหันตามศัตรู
+            camera.CFrame = CFrame.new(camera.CFrame.Position, targetRoot.Position)
+
+            -- ตัวละครหันไปทางศัตรู
+            if humanoid then
+                humanoid.AutoRotate = false
+                local lookAt = Vector3.new(targetRoot.Position.X, root.Position.Y, targetRoot.Position.Z)
+                root.CFrame = CFrame.new(root.Position, lookAt)
+            end
         end
     end
 end)
 
--- ระบบกันแบน (ป้องกัน Kick เบื้องต้น)
+--=========================
+-- Anti-Ban (กัน Kick เบื้องต้น)
+--=========================
 hookfunction(game:GetService("Players").LocalPlayer.Kick, function() return end)
